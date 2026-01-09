@@ -1,0 +1,233 @@
+{
+  "name": "VFIS Daily Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Daily Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://vfis-api:8000/api/v1/ingest/quarterly-pdfs",
+        "authentication": "none",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ingest-quarterly",
+      "name": "Ingest Quarterly PDFs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 200],
+      "notes": "Calls Python ingestion script for quarterly PDFs"
+    },
+    {
+      "parameters": {
+        "url": "http://vfis-api:8000/api/v1/ingest/annual-reports",
+        "authentication": "none",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ingest-annual",
+      "name": "Ingest Annual Reports",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 300],
+      "notes": "Calls Python ingestion script for annual reports"
+    },
+    {
+      "parameters": {
+        "url": "http://vfis-api:8000/api/v1/ingest/news",
+        "authentication": "none",
+        "options": {
+          "timeout": 60000
+        }
+      },
+      "id": "ingest-news",
+      "name": "Ingest News RSS",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 400],
+      "notes": "Calls Python ingestion script for news RSS feeds"
+    },
+    {
+      "parameters": {
+        "url": "http://vfis-api:8000/api/v1/ingest/technical-indicators",
+        "authentication": "none",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "ingest-technicals",
+      "name": "Compute Technical Indicators",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [450, 500],
+      "notes": "Calls Python script to compute technical indicators"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "check-status",
+              "leftValue": "={{ $json.status }}",
+              "rightValue": "success",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "check-success",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "message": "Daily ingestion completed successfully",
+        "additionalFields": {}
+      },
+      "id": "log-success",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 250]
+    },
+    {
+      "parameters": {
+        "message": "Daily ingestion failed - check logs",
+        "additionalFields": {}
+      },
+      "id": "log-failure",
+      "name": "Log Failure",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 350]
+    }
+  ],
+  "connections": {
+    "Daily Schedule": {
+      "main": [
+        [
+          {
+            "node": "Ingest Quarterly PDFs",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ingest Annual Reports",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ingest News RSS",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Compute Technical Indicators",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Quarterly PDFs": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest Annual Reports": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ingest News RSS": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Technical Indicators": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 0,
+  "updatedAt": "2024-01-15T00:00:00.000Z",
+  "versionId": "1"
+}
+
