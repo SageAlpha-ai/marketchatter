@@ -1,10 +1,15 @@
-"""PostgreSQL database connection and initialization."""
+"""
+PostgreSQL database connection and initialization.
+
+CLOUD-PRODUCTION READY:
+- No localhost assumptions - fails fast if POSTGRES_HOST not set
+- SSL support for cloud databases (Render, Supabase, Neon)
+- Set DATABASE_SSL=true for SSL-required environments
+"""
 import os
-from pathlib import Path
 from typing import Optional
 import psycopg2
 from psycopg2 import pool
-from psycopg2.extensions import connection
 from contextlib import contextmanager
 import logging
 
@@ -21,16 +26,18 @@ def init_database(config: dict = None):
     This function is idempotent - safe to call multiple times.
     If the pool is already initialized, it will be reused.
     
-    Args:
-        config: Optional dict with database config (keys: db_host, db_port, db_name, db_user, db_password).
-                If None, uses empty dict (environment variables take precedence).
-                
-    Environment Variables (standardized to POSTGRES_*):
-        POSTGRES_HOST: Database host (default: localhost)
+    CLOUD-PRODUCTION NOTES:
+    - POSTGRES_HOST is REQUIRED (no localhost default)
+    - Set DATABASE_SSL=true for SSL-required cloud databases
+    - All credentials must come from environment variables
+    
+    Environment Variables (REQUIRED):
+        POSTGRES_HOST: Database host (REQUIRED - no default)
         POSTGRES_PORT: Database port (default: 5432)
-        POSTGRES_DB: Database name (default: vfis_db)
-        POSTGRES_USER: Database user (default: postgres)
-        POSTGRES_PASSWORD: Database password (required)
+        POSTGRES_DB: Database name (REQUIRED - no default)
+        POSTGRES_USER: Database user (REQUIRED - no default)
+        POSTGRES_PASSWORD: Database password (REQUIRED)
+        DATABASE_SSL: Set to 'true' for SSL connections (default: false)
     """
     global _connection_pool
     
@@ -43,21 +50,37 @@ def init_database(config: dict = None):
     if config is None:
         config = {}
     
-    # Get database configuration from environment variables (POSTGRES_*) or config dict
-    # Environment variables take precedence over config dict
-    db_host = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or config.get('db_host', 'localhost')
+    # Get database configuration from environment variables
+    # NO LOCALHOST DEFAULT - must be explicitly set for cloud deployment
+    db_host = os.getenv('POSTGRES_HOST') or os.getenv('DB_HOST') or config.get('db_host')
     db_port = int(os.getenv('POSTGRES_PORT') or os.getenv('DB_PORT') or config.get('db_port', 5432))
-    db_name = os.getenv('POSTGRES_DB') or os.getenv('DB_NAME') or config.get('db_name', 'vfis_db')
-    db_user = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or config.get('db_user', 'postgres')
+    db_name = os.getenv('POSTGRES_DB') or os.getenv('DB_NAME') or config.get('db_name')
+    db_user = os.getenv('POSTGRES_USER') or os.getenv('DB_USER') or config.get('db_user')
     db_password = os.getenv('POSTGRES_PASSWORD') or os.getenv('DB_PASSWORD') or config.get('db_password', '')
     
-    # Validate required password (fail fast)
-    if not db_password:
-        raise ValueError(
-            "Database password is required. Set POSTGRES_PASSWORD environment variable. "
-            "For security, never use empty password."
-        )
+    # SSL configuration for cloud databases (Render, Supabase, Neon, etc.)
+    ssl_enabled = os.getenv('DATABASE_SSL', 'false').lower() in ('true', '1', 'yes')
     
+    # FAIL FAST: Validate all required parameters
+    missing = []
+    if not db_host:
+        missing.append('POSTGRES_HOST')
+    if not db_name:
+        missing.append('POSTGRES_DB')
+    if not db_user:
+        missing.append('POSTGRES_USER')
+    if not db_password:
+        missing.append('POSTGRES_PASSWORD')
+    
+    if missing:
+        error_msg = (
+            f"FATAL: Missing required database environment variables: {', '.join(missing)}. "
+            f"Set these in your environment (not .env for production)."
+        )
+        logger.critical(f"[DB] {error_msg}")
+        raise ValueError(error_msg)
+    
+    # Build connection config
     db_config = {
         'host': db_host,
         'port': db_port,
@@ -66,10 +89,15 @@ def init_database(config: dict = None):
         'password': db_password,
     }
     
+    # Add SSL mode for cloud databases
+    if ssl_enabled:
+        db_config['sslmode'] = 'require'
+        logger.info(f"[DB] SSL mode enabled (sslmode=require)")
+    
     # Log configuration (without password) for debugging
     logger.info(
-        f"Initializing database connection pool: "
-        f"host={db_host}, port={db_port}, database={db_name}, user={db_user}"
+        f"[DB] Initializing connection pool: "
+        f"host={db_host}, port={db_port}, database={db_name}, user={db_user}, ssl={ssl_enabled}"
     )
     
     try:
@@ -79,7 +107,7 @@ def init_database(config: dict = None):
             maxconn=10,
             **db_config
         )
-        logger.info(f"Database connection pool initialized for {db_config['database']}")
+        logger.info(f"[DB] Connection pool initialized for {db_name}@{db_host}")
         
         # Test connection
         test_conn = _connection_pool.getconn()
@@ -87,7 +115,7 @@ def init_database(config: dict = None):
             with test_conn.cursor() as cur:
                 cur.execute("SELECT version();")
                 version = cur.fetchone()
-                logger.info(f"Connected to PostgreSQL: {version[0]}")
+                logger.info(f"[DB] Connected to PostgreSQL: {version[0][:60]}...")
             test_conn.commit()
         finally:
             _connection_pool.putconn(test_conn)
@@ -96,8 +124,13 @@ def init_database(config: dict = None):
         from .schema import create_tables
         create_tables()
         
+    except psycopg2.OperationalError as e:
+        error_msg = f"Database connection failed: {e}"
+        logger.critical(f"[DB] FATAL: {error_msg}")
+        logger.critical(f"[DB] Check: host={db_host}, port={db_port}, ssl={ssl_enabled}")
+        raise RuntimeError(error_msg) from e
     except Exception as e:
-        logger.error(f"Failed to initialize database connection pool: {e}")
+        logger.critical(f"[DB] FATAL: Failed to initialize database: {e}")
         raise
 
 

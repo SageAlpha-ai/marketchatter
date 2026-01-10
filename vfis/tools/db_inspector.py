@@ -29,13 +29,17 @@ def count_rows(table_name: str) -> int:
         Exception: If table does not exist or other database error occurs
     """
     # Load database settings from environment variables
+    # CLOUD-PRODUCTION: No localhost default - must be explicitly set
     db_name = os.getenv('POSTGRES_DB')
     db_user = os.getenv('POSTGRES_USER')
     db_password = os.getenv('POSTGRES_PASSWORD')
-    db_host = os.getenv('POSTGRES_HOST', 'localhost')
+    db_host = os.getenv('POSTGRES_HOST')  # REQUIRED - no default
     db_port = os.getenv('POSTGRES_PORT', '5432')
+    db_ssl = os.getenv('DATABASE_SSL', 'false').lower() in ('true', '1', 'yes')
     
     # Validate required environment variables
+    if not db_host:
+        raise ValueError("POSTGRES_HOST environment variable is required")
     if not db_name:
         raise ValueError("POSTGRES_DB environment variable is required")
     if not db_user:
@@ -47,14 +51,21 @@ def count_rows(table_name: str) -> int:
     cur = None
     
     try:
+        # Build connection parameters
+        conn_params = {
+            'dbname': db_name,
+            'user': db_user,
+            'password': db_password,
+            'host': db_host,
+            'port': db_port
+        }
+        
+        # Add SSL mode for cloud databases
+        if db_ssl:
+            conn_params['sslmode'] = 'require'
+        
         # Open a new psycopg2 connection
-        conn = psycopg2.connect(
-            dbname=db_name,
-            user=db_user,
-            password=db_password,
-            host=db_host,
-            port=db_port
-        )
+        conn = psycopg2.connect(**conn_params)
         
         # Create cursor
         cur = conn.cursor()

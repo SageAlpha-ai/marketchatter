@@ -92,8 +92,16 @@ POSTGRES_DB: str = _get_required("POSTGRES_DB")
 POSTGRES_USER: str = _get_required("POSTGRES_USER")
 POSTGRES_PASSWORD: str = _get_required("POSTGRES_PASSWORD")
 
-# Computed connection string
-DATABASE_URL: str = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+# SSL configuration for cloud databases (Render, Supabase, Neon, etc.)
+DATABASE_SSL: bool = _get_optional("DATABASE_SSL", "false").lower() in ("true", "1", "yes")
+
+# Computed connection string (with SSL support for cloud databases)
+_ssl_param = "?sslmode=require" if DATABASE_SSL else ""
+DATABASE_URL: str = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}{_ssl_param}"
+
+# Log SSL status (important for debugging cloud deployments)
+if DATABASE_SSL:
+    logger.info("[ENV] DATABASE_SSL=true - SSL connections enabled for cloud database")
 
 # -----------------------------------------------------------------------------
 # AZURE OPENAI (REQUIRED FOR LLM FEATURES)
@@ -165,6 +173,7 @@ def get_env_status() -> dict:
             "database": POSTGRES_DB,
             "user": POSTGRES_USER,
             "password_set": bool(POSTGRES_PASSWORD),
+            "ssl_enabled": DATABASE_SSL,
         },
         "azure_openai": {
             "available": LLM_AVAILABLE,
@@ -241,6 +250,7 @@ __all__ = [
     "POSTGRES_DB",
     "POSTGRES_USER",
     "POSTGRES_PASSWORD",
+    "DATABASE_SSL",
     "DATABASE_URL",
     
     # Azure OpenAI

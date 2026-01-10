@@ -179,9 +179,10 @@ Examples:
     print("Verified Financial Intelligence System (VFIS) Database Initialization")
     print("=" * 70)
     print()
-    print(f"Database: {DEFAULT_CONFIG.get('db_name', os.getenv('POSTGRES_DB', 'vfis_db'))}")
-    print(f"Host: {DEFAULT_CONFIG.get('db_host', os.getenv('POSTGRES_HOST', 'localhost'))}")
-    print(f"Port: {DEFAULT_CONFIG.get('db_port', os.getenv('POSTGRES_PORT', 5432))}")
+    print(f"Database: {DEFAULT_CONFIG.get('db_name') or os.getenv('POSTGRES_DB') or '(not set)'}")
+    print(f"Host: {DEFAULT_CONFIG.get('db_host') or os.getenv('POSTGRES_HOST') or '(not set)'}")
+    print(f"Port: {DEFAULT_CONFIG.get('db_port') or os.getenv('POSTGRES_PORT') or '5432'}")
+    print(f"SSL: {os.getenv('DATABASE_SSL', 'false')}")
     print()
     
     try:

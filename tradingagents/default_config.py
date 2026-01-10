@@ -20,12 +20,14 @@ DEFAULT_CONFIG = {
     "max_risk_discuss_rounds": 1,
     "max_recur_limit": 100,
     # Database configuration (PostgreSQL)
-    # Standardized to POSTGRES_* environment variables (with DB_* fallback for backward compatibility)
-    "db_host": os.getenv("POSTGRES_HOST") or os.getenv("DB_HOST", "localhost"),
-    "db_port": int(os.getenv("POSTGRES_PORT") or os.getenv("DB_PORT", "5432")),
-    "db_name": os.getenv("POSTGRES_DB") or os.getenv("DB_NAME", "vfis_db"),
-    "db_user": os.getenv("POSTGRES_USER") or os.getenv("DB_USER", "postgres"),
-    "db_password": os.getenv("POSTGRES_PASSWORD") or os.getenv("DB_PASSWORD", ""),
+    # CLOUD-PRODUCTION: No localhost defaults - all values from environment
+    # Set DATABASE_SSL=true for cloud databases (Render, Supabase, Neon)
+    "db_host": os.getenv("POSTGRES_HOST") or os.getenv("DB_HOST"),  # REQUIRED
+    "db_port": int(os.getenv("POSTGRES_PORT") or os.getenv("DB_PORT") or "5432"),
+    "db_name": os.getenv("POSTGRES_DB") or os.getenv("DB_NAME"),  # REQUIRED
+    "db_user": os.getenv("POSTGRES_USER") or os.getenv("DB_USER"),  # REQUIRED
+    "db_password": os.getenv("POSTGRES_PASSWORD") or os.getenv("DB_PASSWORD") or "",
+    "db_ssl": os.getenv("DATABASE_SSL", "false").lower() in ("true", "1", "yes"),
     # Data staleness threshold (in days)
     "data_staleness_threshold_days": 90,
 }
