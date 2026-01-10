@@ -22,37 +22,56 @@ def ensure_market_chatter_table() -> bool:
     """
     Ensure market_chatter table exists with v2 schema.
     
+    NOTE: This function is called AFTER migrations have run.
+    Migrations handle adding source_id to legacy tables.
+    This function creates the table if it doesn't exist at all.
+    
     Returns:
         True if table exists or was created, False on error.
     """
     try:
         with get_db_connection() as conn:
             with conn.cursor() as cur:
-                # Create table with v2 schema
+                # Check if table exists first
                 cur.execute("""
-                    CREATE TABLE IF NOT EXISTS market_chatter (
-                        id SERIAL PRIMARY KEY,
-                        ticker TEXT NOT NULL,
-                        source TEXT NOT NULL,
-                        source_id TEXT NOT NULL,
-                        title TEXT,
-                        summary TEXT,
-                        content TEXT,
-                        url TEXT,
-                        published_at TIMESTAMP WITH TIME ZONE,
-                        sentiment_score NUMERIC(5,4),
-                        sentiment_label TEXT,
-                        confidence NUMERIC(4,3),
-                        source_type TEXT NOT NULL DEFAULT 'news',
-                        company_name TEXT,
-                        raw_payload JSONB,
-                        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        ingested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                        CONSTRAINT unique_source_source_id UNIQUE (source, source_id)
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.tables 
+                        WHERE table_schema = 'public' 
+                        AND table_name = 'market_chatter'
                     );
                 """)
+                table_exists = cur.fetchone()[0]
                 
-                # Create indexes
+                if not table_exists:
+                    # Create table with v2 schema (fresh install)
+                    logger.info("[CHATTER] Creating market_chatter table (fresh install)...")
+                    cur.execute("""
+                        CREATE TABLE market_chatter (
+                            id SERIAL PRIMARY KEY,
+                            ticker TEXT NOT NULL,
+                            source TEXT NOT NULL,
+                            source_id TEXT NOT NULL,
+                            title TEXT,
+                            summary TEXT,
+                            content TEXT,
+                            url TEXT,
+                            published_at TIMESTAMP WITH TIME ZONE,
+                            sentiment_score NUMERIC(5,4),
+                            sentiment_label TEXT,
+                            confidence NUMERIC(4,3),
+                            source_type TEXT NOT NULL DEFAULT 'news',
+                            company_name TEXT,
+                            raw_payload JSONB,
+                            created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            ingested_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                            CONSTRAINT unique_source_source_id UNIQUE (source, source_id)
+                        );
+                    """)
+                    logger.info("[CHATTER] market_chatter table created")
+                else:
+                    logger.debug("[CHATTER] market_chatter table already exists")
+                
+                # Create indexes (idempotent)
                 cur.execute("""
                     CREATE INDEX IF NOT EXISTS idx_mc_ticker 
                         ON market_chatter(ticker);
@@ -67,11 +86,11 @@ def ensure_market_chatter_table() -> bool:
                 """)
                 
                 conn.commit()
-                logger.debug("market_chatter table ensured")
+                logger.debug("[CHATTER] market_chatter table and indexes verified")
                 return True
                 
     except Exception as e:
-        logger.error(f"Failed to ensure market_chatter table: {e}")
+        logger.error(f"[CHATTER] Failed to ensure market_chatter table: {e}")
         return False
 
 

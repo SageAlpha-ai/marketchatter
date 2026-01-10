@@ -33,6 +33,7 @@ class BootstrapResult:
     success: bool
     env_loaded: bool
     db_initialized: bool
+    migrations_applied: bool
     tables_created: bool
     scheduler_started: bool
     errors: List[str]
@@ -43,6 +44,7 @@ class BootstrapResult:
             'success': self.success,
             'env_loaded': self.env_loaded,
             'db_initialized': self.db_initialized,
+            'migrations_applied': self.migrations_applied,
             'tables_created': self.tables_created,
             'scheduler_started': self.scheduler_started,
             'errors': self.errors,
@@ -179,11 +181,54 @@ def _init_database() -> tuple[bool, List[str]]:
         return False, errors
 
 
+def _run_migrations() -> tuple[bool, List[str]]:
+    """
+    Run database migrations to handle legacy schema changes.
+    
+    CRITICAL: Must be called AFTER _init_database() and BEFORE _ensure_tables().
+    
+    This handles cases where production databases have legacy schemas
+    that are missing columns required by the current codebase.
+    
+    Returns:
+        Tuple of (success, errors)
+    """
+    errors = []
+    
+    try:
+        from tradingagents.database.migrations import run_migrations, check_migration_status
+        
+        logger.info("[BOOTSTRAP] Step 3: Running database migrations...")
+        
+        # Check current status
+        status = check_migration_status()
+        if status.get("migrations_needed"):
+            logger.info(f"[BOOTSTRAP] Migrations needed: {status['migrations_needed']}")
+        else:
+            logger.info("[BOOTSTRAP] No migrations needed")
+        
+        # Run migrations (idempotent - safe to run even if not needed)
+        success, migration_errors = run_migrations()
+        errors.extend(migration_errors)
+        
+        if success:
+            logger.info("[BOOTSTRAP] Migrations completed successfully")
+        else:
+            logger.error(f"[BOOTSTRAP] Migrations failed: {migration_errors}")
+        
+        return success, errors
+        
+    except Exception as e:
+        errors.append(f"Migration failed: {e}")
+        logger.critical(f"[BOOTSTRAP] FATAL: Migration failed: {e}")
+        return False, errors
+
+
 def _ensure_tables() -> tuple[bool, List[str]]:
     """
     Ensure required database tables exist.
     
-    CRITICAL: Must be called AFTER _init_database().
+    CRITICAL: Must be called AFTER _run_migrations().
     
     Returns:
         Tuple of (success, errors)
@@ -193,7 +238,7 @@ def _ensure_tables() -> tuple[bool, List[str]]:
     try:
         from tradingagents.database.chatter_persist import ensure_market_chatter_table
         
-        logger.info("[BOOTSTRAP] Step 3: Ensuring database tables exist...")
+        logger.info("[BOOTSTRAP] Step 4: Ensuring database tables exist...")
         if ensure_market_chatter_table():
             logger.info("[BOOTSTRAP] market_chatter table ready")
         else:
@@ -222,7 +267,7 @@ def _start_scheduler() -> tuple[bool, List[str]]:
     try:
         from vfis.ingestion.scheduler import start_scheduler, get_scheduler_status
         
-        logger.info("[BOOTSTRAP] Step 4: Starting background ingestion scheduler...")
+        logger.info("[BOOTSTRAP] Step 5: Starting background ingestion scheduler...")
         start_scheduler()
         
         status = get_scheduler_status()
@@ -251,11 +296,15 @@ def bootstrap(
     Call this ONCE at application startup before any other operations.
     
     Initialization order (CRITICAL):
-    1. Load .env file
-    2. Validate required environment variables
-    3. Initialize database connection pool
-    4. Ensure required tables exist (migrations)
+    1. Load and validate environment variables
+    2. Initialize database connection pool
+    3. Run database migrations (handles legacy schemas)
+    4. Ensure required tables exist
     5. Start background ingestion scheduler (optional)
+    
+    NOTE: Step 3 (migrations) is CRITICAL for production deployments where
+    legacy database schemas may exist. Migrations are idempotent and safe
+    to run multiple times.
     
     Args:
         start_scheduler: Whether to start the background scheduler (default: True)
@@ -290,7 +339,7 @@ def bootstrap(
     
     logger.info("=" * 60)
     logger.info("[BOOTSTRAP] Starting VFIS system initialization...")
-    logger.info("[BOOTSTRAP] Initialization order: ENV -> DB POOL -> TABLES -> SCHEDULER")
+    logger.info("[BOOTSTRAP] Initialization order: ENV -> DB POOL -> MIGRATIONS -> TABLES -> SCHEDULER")
     logger.info("=" * 60)
     
     all_errors: List[str] = []
@@ -330,10 +379,24 @@ def bootstrap(
                 raise RuntimeError(error_msg)
     
     # =========================================================================
-    # STEP 3: Ensure tables exist (REQUIRES DB POOL)
+    # STEP 3: Run migrations (REQUIRES DB POOL, BEFORE table validation)
+    # =========================================================================
+    migrations_success = False
+    if db_initialized:
+        migrations_success, migration_errors = _run_migrations()
+        all_errors.extend(migration_errors)
+        
+        if not migrations_success:
+            error_msg = f"FATAL: Database migrations failed: {migration_errors}"
+            logger.critical(f"[BOOTSTRAP] {error_msg}")
+            if fail_fast:
+                raise RuntimeError(error_msg)
+    
+    # =========================================================================
+    # STEP 4: Ensure tables exist (REQUIRES MIGRATIONS)
     # =========================================================================
     tables_created = False
-    if db_initialized:
+    if migrations_success:
         tables_created, table_errors = _ensure_tables()
         all_errors.extend(table_errors)
         
@@ -344,7 +407,7 @@ def bootstrap(
                 raise RuntimeError(error_msg)
     
     # =========================================================================
-    # STEP 4: Start scheduler (REQUIRES TABLES)
+    # STEP 5: Start scheduler (REQUIRES TABLES)
     # =========================================================================
     scheduler_started = False
     if start_scheduler and tables_created:
@@ -359,12 +422,13 @@ def bootstrap(
     # =========================================================================
     # FINAL: Build result and log status
     # =========================================================================
-    success = env_loaded and env_valid and db_initialized and tables_created
+    success = env_loaded and env_valid and db_initialized and migrations_success and tables_created
     
     _bootstrap_result = BootstrapResult(
         success=success,
         env_loaded=env_loaded,
         db_initialized=db_initialized,
+        migrations_applied=migrations_success,
         tables_created=tables_created,
         scheduler_started=scheduler_started,
         errors=all_errors,
@@ -377,7 +441,7 @@ def bootstrap(
     logger.info("=" * 60)
     if success:
         logger.info("[BOOTSTRAP] VFIS system initialized successfully")
-        logger.info(f"[BOOTSTRAP] DB Pool: ✓ | Tables: ✓ | Scheduler: {'✓' if scheduler_started else '✗'}")
+        logger.info(f"[BOOTSTRAP] DB Pool: OK | Migrations: OK | Tables: OK | Scheduler: {'OK' if scheduler_started else 'SKIP'}")
     else:
         logger.critical(f"[BOOTSTRAP] VFIS system initialization FAILED")
         logger.critical(f"[BOOTSTRAP] Errors: {all_errors}")

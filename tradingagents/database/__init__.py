@@ -9,11 +9,15 @@ from .chatter_dal import (
     bulk_insert_chatter,
     ensure_market_chatter_table
 )
+from .migrations import run_migrations, check_migration_status
 
 __all__ = [
     'get_db_connection',
     'init_database',
     'create_tables',
+    # Migrations
+    'run_migrations',
+    'check_migration_status',
     # Market chatter DAL
     'get_recent_chatter',
     'get_chatter_metadata',
