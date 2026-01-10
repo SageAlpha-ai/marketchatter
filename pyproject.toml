@@ -1,32 +1,40 @@
-
+[project]
+name = "vfis"
+version = "1.0.0"
+description = "Verified Financial Intelligence System"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "akshare>=1.16.98",
-    "backtrader>=1.9.78.123",
-    "chainlit>=2.5.5",
-    "chromadb>=1.0.12",
-    "eodhd>=1.0.32",
-    "feedparser>=6.0.11",
-    "finnhub-python>=2.4.23",
-    "grip>=4.6.2",
-    "langchain-anthropic>=0.3.15",
-    "langchain-experimental>=0.3.4",
-    "langchain-google-genai>=2.1.5",
-    "langchain-openai>=0.3.23",
-    "langgraph>=0.4.8",
-    "pandas>=2.3.0",
-    "parsel>=1.10.0",
-    "praw>=7.8.1",
-    "pytz>=2025.2",
-    "questionary>=2.1.0",
-    "redis>=6.2.0",
-    "requests>=2.32.4",
-    "rich>=14.0.0",
-    "setuptools>=80.9.0",
-    "stockstats>=0.6.5",
-    "tqdm>=4.67.1",
-    "tushare>=1.4.21",
-    "typing-extensions>=4.14.0",
-    "yfinance>=0.2.63",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "psycopg2-binary>=2.9.0",
+    "SQLAlchemy>=2.0.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "requests>=2.28.0",
+    "aiohttp>=3.8.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "openai>=1.0.0",
+    "langchain-core>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "langgraph>=0.1.0",
+    "chromadb>=0.4.0",
+    "feedparser>=6.0.0",
+    "yfinance>=0.2.30",
+    "stockstats>=0.5.0",
+    "pdfplumber>=0.10.0",
+    "opencv-python-headless>=4.8.0",
+    "textblob>=0.17.0",
+    "vaderSentiment>=3.3.0",
+    "beautifulsoup4>=4.12.0",
+    "tenacity>=8.2.0",
+    "tqdm>=4.65.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
 ]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
